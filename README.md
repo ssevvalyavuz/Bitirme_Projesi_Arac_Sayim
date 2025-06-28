@@ -5,7 +5,7 @@ Tarayıcıdan bir MP4 yükleyin; sunucu YOLOv8 ile araçları algılar, DeepSOR
 
 > **Model ağırlıkları**
 > Tüm ön‑eğitimli dosyalar Google Drive’da:
-> **[https://drive.google.com/drive/folders/1ABCDEFghijKLMNopQRsTuvwXYZ](https://drive.google.com/drive/folders/1ABCDEFghijKLMNopQRsTuvwXYZ)**
+> **[Modellerin Drive Linki](https://drive.google.com/drive/folders/1hO6VoK62yMVkQznoOacsIZ1G7zgJCmc0?usp=sharing)**
 > Kod, `best_optimazed.pt` dosyasının projenin kök dizinine kopyalanmış olduğunu varsayar.
 
 ---
