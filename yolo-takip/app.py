@@ -16,8 +16,6 @@ matplotlib.use('Agg')
 import multiprocessing
 multiprocessing.set_start_method('spawn', force=True)
 
-
-# Videoyu tarayıcı uyumlu hale getirmek için FFmpeg ile dönüştürme
 def convert_mp4_for_browser(input_path, output_path):
     ffmpeg_bin = ffmpeg.get_ffmpeg_exe()
     subprocess.call([
@@ -29,7 +27,6 @@ def convert_mp4_for_browser(input_path, output_path):
         output_path
     ])
 
-# Isı haritası (heatmap) üretimi
 def save_heatmap(points, width, height, output_path):
     if not points:
         return
@@ -41,7 +38,6 @@ def save_heatmap(points, width, height, output_path):
     )
     heatmap = np.rot90(heatmap)
     heatmap = np.flipud(heatmap)
-        # Görselleştir ve kaydet
     plt.imshow(heatmap, cmap='jet', interpolation='nearest', alpha=0.8)
     plt.axis('off')
     plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
@@ -51,36 +47,32 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# YOLOv8 modeli ve DeepSORT başlatılıyor
-model = YOLO("best_model.pt")
+# Model ve DeepSORT başlat
+model = YOLO("best_optimazed.pt")
 deepsort = DeepSort(model_path="deep_sort/deep/checkpoint/ckpt.t7", use_cuda=False)
 
-# Tespit için minimum güven eşiği
+# Modelden sınıf isimlerini al
+ALLOWED_CLASSES = [model.names[i] for i in sorted(model.names)]
+
+# Renk eşlemesi: model sırasına göre
+CLASS_COLORS = {
+    'person': (255, 0, 0),
+    'bicycle': (0, 255, 255),
+    'car': (0, 255, 0),
+    'motorcycle': (255, 255, 0),
+    'bus': (255, 0, 255),
+    'truck': (0, 0, 255),
+}
+
 CONF_THRESHOLD = 0.4
-
-# Track ID ,sınıf ismi eşlemesi, takip süresi ve heatmap noktaları
-
 id2label = {}
 track_times = {}
 heatmap_points = []
 
-# İzin verilen sınıflar ve bunlara karşılık gelen renkler
-
-ALLOWED_CLASSES = ['person', 'car', 'truck', 'motorcycle', 'bus', 'bicycle']
-CLASS_COLORS = {
-    'person': (255, 0, 0),
-    'car': (0, 255, 0),
-    'truck': (0, 0, 255),
-    'motorcycle': (255, 255, 0),
-    'bus': (255, 0, 255),
-    'bicycle': (0, 255, 255),
-}
-#Ana sayfa 
 @app.route('/')
 def index():
     return render_template("index.html")
 
-# Video analiz işlemi
 @app.route('/analyze', methods=['POST'])
 def analyze():
     video = request.files.get("video")
@@ -100,7 +92,7 @@ def analyze():
     fps = int(cap.get(cv2.CAP_PROP_FPS) or 25)
 
     out = cv2.VideoWriter(raw_output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
-    object_counts = defaultdict(set) # Nesne sınıfına göre benzersiz ID sayımı
+    object_counts = defaultdict(set)
     frame_id = 0
 
     while True:
@@ -108,7 +100,6 @@ def analyze():
         if not ret:
             break
 
-         # YOLO ile nesne tespiti   
         results = model(frame)[0]
         detections = results.boxes.data.cpu().numpy() if results.boxes.data is not None else []
 
@@ -129,23 +120,20 @@ def analyze():
         outputs = []
         if bbox_xyxy:
             bbox_xywh = [xyxy_to_xywh(box) for box in bbox_xyxy]
-            #DeepSORT ile takip
             outputs = deepsort.update(np.array(bbox_xywh), np.array(confs), frame)
-        # Takip edilen her nesne için görsel çizim ve ID atama
+
         for i, det in enumerate(bbox_xywh if bbox_xyxy else []):
             x_center, y_center, _, _ = det
             for output in outputs:
                 x1, y1, x2, y2, track_id = map(int, output)
                 if x1 <= x_center <= x2 and y1 <= y_center <= y2:
                     cls = clss[i]
-                    label = model.names.get(cls, str(cls))
+                    label = model.names[int(cls)]
                     conf = confs[i]
 
-                    # ID için ilk defa sınıf atanıyorsa
                     if track_id not in id2label:
                         id2label[track_id] = label
                     else:
-                        # Daha yüksek güvenle gelen başka sınıf varsa güncelle
                         current_label = id2label[track_id]
                         if label != current_label and conf > 0.55:
                             id2label[track_id] = label
@@ -156,7 +144,6 @@ def analyze():
                     color = CLASS_COLORS.get(true_label, (255, 255, 255))
                     object_counts[true_label].add(track_id)
 
-                    # Takip süresi hesapla
                     if track_id not in track_times:
                         track_times[track_id] = {
                             "label": true_label,
@@ -170,7 +157,6 @@ def analyze():
                     cy = int((y1 + y2) / 2)
                     heatmap_points.append((cx, cy))
 
-                    # Kutucuk ve ID çiz
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                     text = f"{true_label} {track_id}"
                     (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
@@ -183,7 +169,6 @@ def analyze():
 
     cap.release()
     out.release()
-    # Çıktıyı dönüştür ve heatmap oluştur
     convert_mp4_for_browser(raw_output_path, final_output_path)
     save_heatmap(heatmap_points, width, height, heatmap_path)
 
@@ -193,7 +178,6 @@ def analyze():
         track_times[tid]["start_sec"] = round(track_times[tid]["start_frame"] / fps, 2)
         track_times[tid]["end_sec"] = round(track_times[tid]["end_frame"] / fps, 2)
 
-    # Sonuçları frontend'e JSON olarak gönder
     return jsonify({
         "video_url": url_for("static", filename=f"uploads/{os.path.basename(final_output_path)}"),
         "totals": counts,
@@ -201,6 +185,5 @@ def analyze():
         "heatmap_url": url_for("static", filename=f"uploads/{os.path.basename(heatmap_path)}")
     })
 
-# Flask uygulamasını başlat
 if __name__ == '__main__':
     app.run(debug=True)
